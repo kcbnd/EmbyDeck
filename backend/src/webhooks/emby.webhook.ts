@@ -108,16 +108,21 @@ webhookRoute.post('/', async (c) => {
 
     // 5. 更新 user_show_status
     if (isWatched) {
-      const allEps = db.select({ id: episodes.id }).from(episodes)
-        .where(eq(episodes.show_id, show.id)).all();
       const watchedEps = db.select({ ep_id: watch_progress.episode_id })
         .from(watch_progress)
+        .where(and(eq(watch_progress.is_watched, true), eq(watch_progress.episode_id, episode.id))).all();
+      // 统计本剧所有已看集数
+      const allWatchedEps = db.select({ ep_id: watch_progress.episode_id })
+        .from(watch_progress)
         .where(eq(watch_progress.is_watched, true)).all();
-      const watchedSet = new Set(watchedEps.map(w => w.ep_id));
-      const totalWatched = allEps.filter(e => watchedSet.has(e.id)).length;
-      const total = allEps.length;
+      const allLocalEps = db.select({ id: episodes.id }).from(episodes)
+        .where(eq(episodes.show_id, show.id)).all();
+      const watchedSet = new Set(allWatchedEps.map(w => w.ep_id));
+      const totalWatched = allLocalEps.filter(e => watchedSet.has(e.id)).length;
+      // 优先使用 shows 表的 total_episodes，避免本地集数不全导致误判完结
+      const total = (show as any).total_episodes || 0;
       let watchStatus = 'plan';
-      if (totalWatched > 0 && totalWatched < total) watchStatus = 'watching';
+      if (totalWatched > 0 && (total === 0 || totalWatched < total)) watchStatus = 'watching';
       else if (total > 0 && totalWatched >= total) watchStatus = 'watched';
 
       const existingStatus = db.select().from(user_show_status)

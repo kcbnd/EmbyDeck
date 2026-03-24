@@ -148,6 +148,8 @@ export class SyncService {
               const userData = ep.UserData || {};
               const pct = userData.PlayedPercentage || (userData.Played ? 100 : 0);
               const isWatched = userData.Played === true || pct >= 90;
+              // 优先使用 Emby 返回的真实历史观看时间，避免历史记录全部变成今天
+              const embyWatchedAt = userData.LastPlayedDate || ep.DatePlayed || null;
 
               if (pct > 0 || isWatched) {
                 const existingProgress = db.select().from(watch_progress)
@@ -157,7 +159,7 @@ export class SyncService {
                   played_percentage: pct,
                   position_ticks: userData.PlaybackPositionTicks || 0,
                   is_watched: isWatched,
-                  watched_at: isWatched ? now() : null,
+                  watched_at: isWatched ? (embyWatchedAt || now()) : null,
                   synced_at: now(),
                 };
                 if (existingProgress) {
@@ -168,7 +170,8 @@ export class SyncService {
 
                 if (isWatched) {
                   totalWatched++;
-                  if (!lastWatchedAt || now() > lastWatchedAt) lastWatchedAt = now();
+                  const watchedTimestamp = embyWatchedAt || now();
+                  if (!lastWatchedAt || watchedTimestamp > lastWatchedAt) lastWatchedAt = watchedTimestamp;
                   if (seasonNum > currentSeason || (seasonNum === currentSeason && (ep.IndexNumber || 0) > currentEpisode)) {
                     currentSeason = seasonNum;
                     currentEpisode = ep.IndexNumber || 0;

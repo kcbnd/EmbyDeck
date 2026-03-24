@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import ShowCard from '@/components/ShowCard.vue';
 import DetailModal from '@/components/DetailModal.vue';
 import SearchModal from '@/components/SearchModal.vue';
@@ -33,9 +33,9 @@ function openDetail(show: any) {
   drawerOpen.value = true;
 }
 
-const watchingList = () => shows.value.filter(s => s.status === 'watching');
-const planList = () => shows.value.filter(s => s.status === 'plan');
-const watchedList = () => shows.value.filter(s => s.status === 'watched');
+const watchingList = computed(() => shows.value.filter(s => s.status === 'watching'));
+const planList = computed(() => shows.value.filter(s => s.status === 'plan'));
+const watchedList = computed(() => shows.value.filter(s => s.status === 'watched'));
 </script>
 
 <template>
@@ -47,13 +47,13 @@ const watchedList = () => shows.value.filter(s => s.status === 'watched');
 
     <template v-else>
       <!-- 继续观看 -->
-      <section v-if="watchingList().length > 0">
+      <section v-if="watchingList.length > 0">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-5 flex items-center gap-3">
           <span class="w-1.5 h-6 bg-blue-500 rounded-full"></span>继续观看
-          <span class="text-sm font-normal text-gray-400">{{ watchingList().length }} 部</span>
+          <span class="text-sm font-normal text-gray-400">{{ watchingList.length }} 部</span>
         </h2>
         <div class="grid gap-4 sm:gap-5" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr))">
-          <ShowCard v-for="show in watchingList()" :key="show.id" :item="show" @click.stop="openDetail(show)" />
+          <ShowCard v-for="show in watchingList" :key="show.id" :item="show" @click.stop="openDetail(show)" />
         </div>
       </section>
 
@@ -66,29 +66,29 @@ const watchedList = () => shows.value.filter(s => s.status === 'watched');
       </div>
 
       <!-- 我的片单 -->
-      <section v-if="planList().length > 0">
+      <section v-if="planList.length > 0">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-5 flex items-center gap-3">
           <span class="w-1.5 h-6 bg-gray-400 rounded-full"></span>我的片单
-          <span class="text-sm font-normal text-gray-400">{{ planList().length }} 部</span>
+          <span class="text-sm font-normal text-gray-400">{{ planList.length }} 部</span>
         </h2>
         <div class="grid gap-4 sm:gap-5" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr))">
-          <ShowCard v-for="show in planList()" :key="show.id" :item="show" @click.stop="openDetail(show)" />
+          <ShowCard v-for="show in planList" :key="show.id" :item="show" @click.stop="openDetail(show)" />
         </div>
       </section>
 
       <!-- 看完了 -->
-      <section v-if="watchedList().length > 0">
+      <section v-if="watchedList.length > 0">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-5 flex items-center gap-3">
           <span class="w-1.5 h-6 bg-emerald-500 rounded-full"></span>看完了
-          <span class="text-sm font-normal text-gray-400">{{ watchedList().length }} 部</span>
+          <span class="text-sm font-normal text-gray-400">{{ watchedList.length }} 部</span>
         </h2>
         <div class="grid gap-4 sm:gap-5" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr))">
-          <ShowCard v-for="show in watchedList()" :key="show.id" :item="show" @click.stop="openDetail(show)" />
+          <ShowCard v-for="show in watchedList" :key="show.id" :item="show" @click.stop="openDetail(show)" />
         </div>
       </section>
 
       <!-- 空状态 -->
-      <div v-if="!watchingList().length && !planList().length && !watchedList().length"
+      <div v-if="!watchingList.length && !planList.length && !watchedList.length"
         class="flex flex-col items-center justify-center py-24 text-gray-400">
         <div class="text-6xl mb-4">📺</div>
         <p class="text-lg font-medium mb-2">还没有追剧记录</p>

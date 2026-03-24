@@ -9,6 +9,8 @@ services:
       - /app/node_modules
       - db_data:/app/data
     command: sh -c "apk add --no-cache python3 make g++ && npm config set registry https://registry.npmmirror.com && npm install && npm run dev"
+    ports:
+      - "3000:3000"
     env_file:
       - ./backend/.env
     networks:
