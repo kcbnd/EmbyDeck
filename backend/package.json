@@ -1,0 +1,29 @@
+{
+  "name": "embyflow-backend",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --skipLibCheck --noEmitOnError false",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.2",
+    "axios": "^1.6.8",
+    "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.30.10",
+    "hono": "^4.2.6",
+    "https-proxy-agent": "^7.0.4",
+    "node-cron": "^3.0.3",
+    "socks-proxy-agent": "^8.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/node": "^20.14.10",
+    "@types/node-cron": "^3.0.11",
+    "drizzle-kit": "^0.21.4",
+    "tsx": "^4.15.7",
+    "typescript": "^5.5.3"
+  }
+}

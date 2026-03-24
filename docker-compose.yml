@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - db_data:/app/data
+    command: sh -c "apk add --no-cache python3 make g++ && npm config set registry https://registry.npmmirror.com && npm install && npm run dev"
+    env_file:
+      - ./backend/.env
+    networks:
+      - embyflow-network
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "8080:5173"
+    command: sh -c "npm config set registry https://registry.npmmirror.com && npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - embyflow-network
+
+networks:
+  embyflow-network:
+    driver: bridge
+
+volumes:
+  db_data:
+    name: embyflow_db_data
