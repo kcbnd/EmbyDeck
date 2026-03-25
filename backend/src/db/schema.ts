@@ -79,11 +79,18 @@ export const watch_progress = sqliteTable('watch_progress', {
 // 6. 同步日志
 export const sync_log = sqliteTable('sync_log', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  sync_type: text('sync_type'), // manual / auto / webhook
-  status: text('status'), // running / success / error
+  sync_type: text('sync_type'),
+  status: text('status'),
   shows_synced: integer('shows_synced').default(0),
   episodes_synced: integer('episodes_synced').default(0),
   error_message: text('error_message'),
   started_at: text('started_at'),
   finished_at: text('finished_at'),
+});
+
+// 7. 系统设置表
+export const settings = sqliteTable('settings', {
+  key: text('key').primaryKey(),
+  value: text('value'),
+  updated_at: text('updated_at'),
 });

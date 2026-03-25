@@ -78,4 +78,13 @@ export class EmbyService {
     });
     return res.data;
   }
+
+  // 获取用户列表（用于设置页选择 User ID）
+  static async getUsers(url: string, key: string) {
+    const res = await axios.get(`${url}/Users`, {
+      headers: { 'X-Emby-Token': key },
+      timeout: 10000,
+    });
+    return res.data;
+  }
 }

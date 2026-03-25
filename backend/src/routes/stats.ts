@@ -35,18 +35,7 @@ statsRoute.get('/', (c) => {
     }
   }
 
-  // 提取观看年份
-  const allProgressRaw = db.select({ watched_at: watch_progress.watched_at })
-    .from(watch_progress)
-    .where(eq(watch_progress.is_watched, true))
-    .all();
 
-  for (const p of allProgressRaw) {
-    if (p.watched_at) {
-      const y = p.watched_at.slice(0, 4);
-      if (y) yearsSet.add(y);
-    }
-  }
 
   // 2. 内存过滤 allShows 和 allStatus
   if (qType) {
@@ -113,6 +102,14 @@ statsRoute.get('/', (c) => {
     .leftJoin(episodes, eq(watch_progress.episode_id, episodes.id))
     .where(eq(watch_progress.is_watched, true))
     .all();
+
+  // 提取观看年份
+  for (const p of allProgressRaw) {
+    if (p.watched_at) {
+      const y = p.watched_at.slice(0, 4);
+      if (y) yearsSet.add(y);
+    }
+  }
 
   const allProgress = allProgressRaw.filter(p => p.show_id && validShowIds.has(p.show_id));
 
