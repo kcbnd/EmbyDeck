@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 
 const logsRoute = new Hono();
@@ -15,25 +15,29 @@ interface LogEntry {
   stack?: string;
 }
 
-// GET /api/logs - 读取最新的日志
+function getLocalDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 logsRoute.get('/', async (c) => {
   try {
     const limit = parseInt(c.req.query('limit') || '200');
     const level = c.req.query('level');
     
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+    const dateStr = getLocalDateString();
     const logFile = path.join(LOG_DIR, `app-${dateStr}.log`);
     
-    if (!fs.existsSync(LOG_DIR)) {
-      fs.mkdirSync(LOG_DIR, { recursive: true });
-    }
-    
-    if (!fs.existsSync(logFile)) {
+    try {
+      await fs.access(logFile);
+    } catch {
       return c.json({ logs: [], message: '日志文件不存在' });
     }
     
-    const content = fs.readFileSync(logFile, 'utf-8');
+    const content = await fs.readFile(logFile, 'utf-8');
     const lines = content.split('\n').filter(line => line.trim());
     
     const parsedLogs: LogEntry[] = [];

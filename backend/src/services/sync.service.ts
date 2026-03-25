@@ -20,33 +20,38 @@ export class SyncService {
     let episodesSynced = 0;
 
     try {
-      // 获取播放历史数据
-      const playbackHistory = await embyService.getPlaybackHistory();
-      const activityLog = await embyService.getActivityLog();
-      
-      // 处理播放历史数据
-      this.processPlaybackHistory(playbackHistory);
-      
+      // 1. 先同步基础库数据（剧集、季、集）
       const embyData = await embyService.getLibraryShows();
       const items = embyData.Items || [];
 
       for (const item of items) {
         try {
           const embyId = item.Id;
+          
+          // 跳过手动添加的剧集
+          if (!embyId || String(embyId).startsWith('manual_tmdb_')) {
+            continue;
+          }
+
           const tmdbId = item.ProviderIds?.Tmdb || '';
           const imageTag = item.ImageTags?.Primary;
           const posterPath = imageTag
             ? `${getSetting('EMBY_URL')}/Items/${embyId}/Images/Primary?tag=${imageTag}`
             : null;
 
-          // 从 TMDB 补充元数据
+          // 从 TMDB 补充元数据（增加 100ms 延迟防止 Rate Limit）
           let tmdbData: any = null;
           if (tmdbId) {
+            await new Promise(r => setTimeout(r, 100));
             tmdbData = await fetchTmdbShow(tmdbId);
           }
           if (!tmdbData && item.Name) {
+            await new Promise(r => setTimeout(r, 100));
             tmdbData = await searchTmdbShow(item.Name);
           }
+
+          // 使用 TMDB 的真实总集数
+          const realTotalEpisodes = tmdbData?.number_of_episodes || 0;
 
           const showPayload: any = {
             emby_id: embyId,
@@ -61,7 +66,7 @@ export class SyncService {
               : null,
             overview: tmdbData?.overview || item.Overview || null,
             total_seasons: tmdbData?.number_of_seasons || 0,
-            total_episodes: tmdbData?.number_of_episodes || 0,
+            total_episodes: realTotalEpisodes,
             vote_average: tmdbData?.vote_average || 0,
             genres: tmdbData?.genres ? JSON.stringify(tmdbData.genres.map((g: any) => g.name)) : null,
             first_air_date: tmdbData?.first_air_date || null,
@@ -148,7 +153,6 @@ export class SyncService {
               const userData = ep.UserData || {};
               const pct = userData.PlayedPercentage || (userData.Played ? 100 : 0);
               const isWatched = userData.Played === true || pct >= 90;
-              // 优先使用 Emby 返回的真实历史观看时间，避免历史记录全部变成今天
               const embyWatchedAt = userData.LastPlayedDate || ep.DatePlayed || null;
 
               if (pct > 0 || isWatched) {
@@ -181,10 +185,13 @@ export class SyncService {
             }
           }
 
-          // 计算追剧状态
+          // 计算追剧状态（使用 TMDB 真实总集数）
           let watchStatus = 'plan';
-          if (totalWatched > 0 && totalWatched < totalEps) watchStatus = 'watching';
-          else if (totalEps > 0 && totalWatched >= totalEps) watchStatus = 'watched';
+          if (totalWatched > 0 && (realTotalEpisodes === 0 || totalWatched < realTotalEpisodes)) {
+            watchStatus = 'watching';
+          } else if (realTotalEpisodes > 0 && totalWatched >= realTotalEpisodes) {
+            watchStatus = 'watched';
+          }
 
           const statusPayload: any = {
             show_id: showId,
@@ -192,7 +199,7 @@ export class SyncService {
             current_season: currentSeason,
             current_episode: currentEpisode,
             total_watched_episodes: totalWatched,
-            progress_pct: totalEps > 0 ? Math.round((totalWatched / totalEps) * 100) : 0,
+            progress_pct: realTotalEpisodes > 0 ? Math.round((totalWatched / realTotalEpisodes) * 100) : 0,
             last_watched_at: lastWatchedAt,
             updated_at: now(),
           };
@@ -200,25 +207,22 @@ export class SyncService {
           const existingStatus = db.select().from(user_show_status)
             .where(eq(user_show_status.show_id, showId)).get();
           if (existingStatus) {
-            // 已有记录：只更新 Emby 同步来的播放进度数据，保留用户手动设置的 watch_status
             db.update(user_show_status).set({
               current_season: currentSeason,
               current_episode: currentEpisode,
               total_watched_episodes: totalWatched,
-              progress_pct: totalEps > 0 ? Math.round((totalWatched / totalEps) * 100) : existingStatus.progress_pct,
+              progress_pct: realTotalEpisodes > 0 ? Math.round((totalWatched / realTotalEpisodes) * 100) : existingStatus.progress_pct,
               last_watched_at: lastWatchedAt,
               updated_at: now(),
-              // watch_status: 不覆盖，用户在 UI 手动设置的状态优先
             } as any).where(eq(user_show_status.id, existingStatus.id)).run();
           } else {
-            // 首次同步，写入完整状态
             const initPayload: any = {
               show_id: showId,
               watch_status: watchStatus,
               current_season: currentSeason,
               current_episode: currentEpisode,
               total_watched_episodes: totalWatched,
-              progress_pct: totalEps > 0 ? Math.round((totalWatched / totalEps) * 100) : 0,
+              progress_pct: realTotalEpisodes > 0 ? Math.round((totalWatched / realTotalEpisodes) * 100) : 0,
               last_watched_at: lastWatchedAt,
               created_at: now(),
               updated_at: now(),
@@ -226,14 +230,16 @@ export class SyncService {
             db.insert(user_show_status).values(initPayload as any).run();
           }
 
-          // 只对真实 Emby 条目更新计算出的 watchStatus，手动添加的条目保留其状态
-          if (!String(embyId).startsWith('manual_tmdb_')) {
-            db.update(shows).set({ status: watchStatus } as any).where(eq(shows.id, showId)).run();
-          }
+          // 更新 shows 表的状态
+          db.update(shows).set({ status: watchStatus } as any).where(eq(shows.id, showId)).run();
         } catch (epErr: any) {
           console.error(`[Sync] Error syncing show ${item.Name}:`, epErr.message);
         }
       }
+
+      // 2. 基础库数据同步完成后，再处理播放历史
+      const playbackHistory = await embyService.getPlaybackHistory();
+      this.processPlaybackHistory(playbackHistory);
 
       const lastLog = db.select().from(sync_log)
         .where(eq(sync_log.status, 'running')).get();
@@ -269,7 +275,6 @@ export class SyncService {
 
     for (const item of items) {
       try {
-        // 只处理已播放的项目
         if (!item.UserData?.Played) continue;
 
         const embyId = item.Id;
@@ -277,14 +282,11 @@ export class SyncService {
 
         if (!datePlayed) continue;
 
-        // 根据项目类型处理
         if (item.Type === 'Episode') {
-          // 处理剧集
           const episode = db.select().from(episodes)
             .where(eq(episodes.emby_episode_id, embyId)).get();
 
           if (episode) {
-            // 更新观看进度
             const existingProgress = db.select().from(watch_progress)
               .where(eq(watch_progress.episode_id, episode.id)).get();
 
@@ -304,16 +306,13 @@ export class SyncService {
               db.insert(watch_progress).values(progressPayload as any).run();
             }
 
-            // 更新剧集的观看状态
             this.updateShowStatus(episode.show_id);
           }
         } else if (item.Type === 'Movie') {
-          // 处理电影
           const show = db.select().from(shows)
             .where(eq(shows.emby_id, embyId)).get();
 
           if (show) {
-            // 更新电影的观看状态
             const statusPayload: any = {
               show_id: show.id,
               watch_status: 'watched',
@@ -346,13 +345,15 @@ export class SyncService {
 
   // 更新剧集的观看状态
   private updateShowStatus(showId: number) {
-    // 获取剧集的所有集数
     const allEpisodes = db.select().from(episodes)
       .where(eq(episodes.show_id, showId)).all();
 
     if (allEpisodes.length === 0) return;
 
-    // 获取已观看的集数
+    // 获取剧集的真实总集数
+    const show = db.select().from(shows).where(eq(shows.id, showId)).get();
+    const realTotalEpisodes = show?.total_episodes || 0;
+
     const watchedEpisodes = db.select().from(watch_progress)
       .where(
         and(
@@ -365,14 +366,15 @@ export class SyncService {
       ).all();
 
     const totalWatched = watchedEpisodes.length;
-    const totalEps = allEpisodes.length;
 
-    // 计算观看状态
+    // 计算观看状态（使用 TMDB 真实总集数）
     let watchStatus = 'plan';
-    if (totalWatched > 0 && totalWatched < totalEps) watchStatus = 'watching';
-    else if (totalEps > 0 && totalWatched >= totalEps) watchStatus = 'watched';
+    if (totalWatched > 0 && (realTotalEpisodes === 0 || totalWatched < realTotalEpisodes)) {
+      watchStatus = 'watching';
+    } else if (realTotalEpisodes > 0 && totalWatched >= realTotalEpisodes) {
+      watchStatus = 'watched';
+    }
 
-    // 更新状态
     const existingStatus = db.select().from(user_show_status)
       .where(eq(user_show_status.show_id, showId)).get();
 
@@ -380,7 +382,7 @@ export class SyncService {
       show_id: showId,
       watch_status: watchStatus,
       total_watched_episodes: totalWatched,
-      progress_pct: totalEps > 0 ? Math.round((totalWatched / totalEps) * 100) : 0,
+      progress_pct: realTotalEpisodes > 0 ? Math.round((totalWatched / realTotalEpisodes) * 100) : 0,
       updated_at: now(),
     };
 
@@ -396,7 +398,6 @@ export class SyncService {
       db.insert(user_show_status).values(statusPayload as any).run();
     }
 
-    // 更新 shows 表的状态
     db.update(shows).set({ status: watchStatus } as any)
       .where(eq(shows.id, showId)).run();
   }

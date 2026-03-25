@@ -1,5 +1,7 @@
-import fs from 'fs';
+import winston from 'winston';
+import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
+import fs from 'fs';
 
 const LOG_DIR = process.env.LOG_DIR || path.join(process.cwd(), 'logs');
 
@@ -7,77 +9,73 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+const localTimestamp = winston.format((info) => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  info.timestamp = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  return info;
+});
 
-interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  module: string;
-  message: string;
-  context?: any;
-  stack?: string;
+const jsonFormat = winston.format.combine(
+  localTimestamp(),
+  winston.format.errors({ stack: true }),
+  winston.format.json()
+);
+
+const consoleFormat = winston.format.combine(
+  localTimestamp(),
+  winston.format.colorize(),
+  winston.format.printf(({ timestamp, level, module, message, context }) => {
+    const moduleTag = module ? `[${module}]` : '';
+    const contextStr = context ? ` ${JSON.stringify(context)}` : '';
+    return `${timestamp} ${level}:${moduleTag} ${message}${contextStr}`;
+  })
+);
+
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: jsonFormat,
+  transports: [
+    new DailyRotateFile({
+      filename: path.join(LOG_DIR, 'app-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '20m',
+      maxFiles: '14d',
+      format: jsonFormat,
+    }),
+    new DailyRotateFile({
+      filename: path.join(LOG_DIR, 'error-%DATE%.log'),
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '20m',
+      maxFiles: '14d',
+      level: 'error',
+      format: jsonFormat,
+    }),
+  ],
+  exitOnError: false,
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new winston.transports.Console({
+    format: consoleFormat,
+  }));
 }
 
-function getLogFileName(): string {
-  const today = new Date();
-  const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-  return path.join(LOG_DIR, `app-${dateStr}.log`);
-}
-
-function formatLogEntry(entry: LogEntry): string {
-  return JSON.stringify(entry);
-}
-
-function writeLog(entry: LogEntry): void {
-  const logFile = getLogFileName();
-  const logLine = formatLogEntry(entry) + '\n';
-  
-  fs.appendFileSync(logFile, logLine, 'utf-8');
-  
-  if (entry.level === 'error') {
-    const errorLogFile = path.join(LOG_DIR, `error-${getLogFileName().split('-').slice(-2).join('-')}`);
-    fs.appendFileSync(errorLogFile, logLine, 'utf-8');
-  }
-  
-  const consoleMethod = entry.level === 'error' ? 'error' : 
-                        entry.level === 'warn' ? 'warn' : 
-                        entry.level === 'debug' ? 'debug' : 'log';
-  
-  const moduleTag = `[${entry.module}]`;
-  const contextStr = entry.context ? ` ${JSON.stringify(entry.context)}` : '';
-  const stackStr = entry.stack ? `\n${entry.stack}` : '';
-  
-  console[consoleMethod](`${entry.timestamp} ${entry.level.toUpperCase()}:${moduleTag} ${entry.message}${contextStr}${stackStr}`);
-}
-
-function createModuleLogger(moduleName: string) {
+export const createModuleLogger = (moduleName: string) => {
   return {
     debug: (message: string, context?: any) => {
-      writeLog({
-        timestamp: new Date().toISOString(),
-        level: 'debug',
-        module: moduleName,
-        message,
-        context,
-      });
+      logger.debug(message, { module: moduleName, context });
     },
     info: (message: string, context?: any) => {
-      writeLog({
-        timestamp: new Date().toISOString(),
-        level: 'info',
-        module: moduleName,
-        message,
-        context,
-      });
+      logger.info(message, { module: moduleName, context });
     },
     warn: (message: string, context?: any) => {
-      writeLog({
-        timestamp: new Date().toISOString(),
-        level: 'warn',
-        module: moduleName,
-        message,
-        context,
-      });
+      logger.warn(message, { module: moduleName, context });
     },
     error: (message: string, error?: Error | any, context?: any) => {
       const errorContext: any = { ...context };
@@ -90,17 +88,10 @@ function createModuleLogger(moduleName: string) {
         };
       }
       
-      writeLog({
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        module: moduleName,
-        message,
-        context: errorContext,
-        stack: error?.stack,
-      });
+      logger.error(message, { module: moduleName, context: errorContext });
     },
   };
-}
+};
 
 export const EmbyWebhookLogger = createModuleLogger('Emby_Webhook');
 export const CronSyncLogger = createModuleLogger('Cron_Sync');
@@ -109,9 +100,4 @@ export const DbEngineLogger = createModuleLogger('DB_Engine');
 export const SettingsLogger = createModuleLogger('Settings');
 export const ApiLogger = createModuleLogger('API');
 
-export default {
-  debug: (module: string, message: string, context?: any) => createModuleLogger(module).debug(message, context),
-  info: (module: string, message: string, context?: any) => createModuleLogger(module).info(message, context),
-  warn: (module: string, message: string, context?: any) => createModuleLogger(module).warn(message, context),
-  error: (module: string, message: string, error?: Error | any, context?: any) => createModuleLogger(module).error(message, error, context),
-};
+export default logger;
