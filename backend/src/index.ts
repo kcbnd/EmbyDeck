@@ -8,8 +8,10 @@ import episodesRoute from './routes/episodes';
 import syncRoute from './routes/sync';
 import statsRoute from './routes/stats';
 import settingsRoute from './routes/settings';
+import logsRoute from './routes/logs';
 import webhookRoute from './webhooks/emby.webhook';
 import { startScheduler } from './scheduler/cron';
+import { ApiLogger } from './utils/logger';
 
 // 初始化数据库
 migrate();
@@ -32,12 +34,13 @@ app.route('/api/episodes', episodesRoute);
 app.route('/api/sync', syncRoute);
 app.route('/api/stats', statsRoute);
 app.route('/api/settings', settingsRoute);
+app.route('/api/logs', logsRoute);
 app.route('/webhooks/emby', webhookRoute);
 
 // 启动定时任务
 startScheduler();
 
 const port = Number(process.env.PORT || 3000);
-console.log(`[Server] EmbyFlow backend running on port ${port}`);
+ApiLogger.info(`EmbyFlow backend running on port ${port}`, { port });
 
 serve({ fetch: app.fetch, port });

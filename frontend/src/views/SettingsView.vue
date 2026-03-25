@@ -320,6 +320,15 @@ async function testProxy() {
           </div>
         </div>
       </div>
-    </section>
+    </section></div>
+    
+    <div class="mt-6 text-center">
+      <router-link to="/logs" class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 0h-6a2 2 0 002-2v6a2 2 0 002 2h6a2 2 0 002-2v6a2 2 0 002-2zm2 10a7 7 0 11-4 0 011-4 0 2 2 2 0 004zm0 1h4a1 1 0 011 0v2a1 1 0 011-2h4a1 1 0 00-2 2 0 011zm2 10a7 7 0 11-4 0 011-4 0 2 2 2 0 004z" />
+        </svg>
+        <span class="font-medium">查看系统运行日志</span>
+      </router-link>
+    </div>
   </div>
 </template>
